@@ -236,12 +236,63 @@ def parse_txt_element(data, offset):
     fields["Reserved2"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
     fields["PrwmBaseOffset"] = f"0x{struct.unpack_from('<I', data, pos)[0]:08X}"; pos += 4
 
-    # DigestList: HASH_LIST (Size, Count)
-    if pos + 4 <= len(data):
-        dl_size = struct.unpack_from("<H", data, pos)[0]
-        dl_count = struct.unpack_from("<H", data, pos + 2)[0]
-        fields["DigestList.Size"] = dl_size
-        fields["DigestList.Count"] = dl_count
+    # DigestList: HASH_LIST (Size, Count, then Count x SHAX_HASH_STRUCTURE digests)
+    if pos + 4 > len(data):
+        return fields
+
+    dl_size = struct.unpack_from("<H", data, pos)[0]
+    dl_count = struct.unpack_from("<H", data, pos + 2)[0]
+    
+    fields["DigestList.Size"] = f"0x{dl_size:04X}"
+    fields["DigestList.Count"] = dl_count
+
+    digest_start = pos + 4  # skip HASH_LIST header (Size + Count)
+
+    dpos = digest_start
+    for i in range(dl_count):
+        if dpos + 4 > len(data):
+            break
+
+        hash_alg = struct.unpack_from("<H", data, dpos)[0]
+        hash_size = struct.unpack_from("<H", data, dpos + 2)[0]
+
+        fields[f"DigestList.Digest[{i}].HashAlg"] = f"0x{hash_alg:04X}"
+        fields[f"DigestList.Digest[{i}].Size"] = f"0x{hash_size:04X}"
+
+        if dpos + 4 + hash_size <= len(data):
+            fields[f"DigestList.Digest[{i}].Hash"] = data[dpos + 4: dpos + 4 + hash_size].hex()
+
+        dpos += 4 + hash_size
+
+    # Reserved3[3] + SegmentCount
+    if dpos + 4 > len(data):
+        return fields
+
+    fields["Reserved3"] = data[dpos:dpos + 3].hex()
+    dpos += 3
+    seg_count = data[dpos]
+    fields["SegmentCount"] = seg_count
+    dpos += 1
+
+    # TxtSegment[SegmentCount] — each IBB_SEGMENT is 12 bytes:
+    #   UINT16 Reserved, UINT16 Flags, UINT32 Base, UINT32 Size
+    for i in range(seg_count):
+        if dpos + 12 > len(data):
+            break
+
+        seg_reserved = struct.unpack_from("<H", data, dpos)[0]
+        seg_flags = struct.unpack_from("<H", data, dpos + 2)[0]
+        seg_base = struct.unpack_from("<I", data, dpos + 4)[0]
+        seg_size = struct.unpack_from("<I", data, dpos + 8)[0]
+
+        flag_name = "IBB" if seg_flags == 0 else "NON_IBB"
+
+        fields[f"TxtSegment[{i}].Reserved"] = f"0x{seg_reserved:04X}"
+        fields[f"TxtSegment[{i}].Flags"] = f"0x{seg_flags:04X} ({flag_name})"
+        fields[f"TxtSegment[{i}].Base"] = f"0x{seg_base:08X}"
+        fields[f"TxtSegment[{i}].Size"] = f"0x{seg_size:08X}"
+
+        dpos += 12
 
     return fields
 

@@ -85,8 +85,10 @@ Searching for Boot Guard structures
     AcpiBaseOffset   : 0x0400
     Reserved2        : 0
     PrwmBaseOffset   : 0xFE000000
-    DigestList.Size  : 4
+    DigestList.Size  : 0x0004
     DigestList.Count : 0
+    Reserved3        : 000000
+    SegmentCount     : 0
 
   [Platform Config Data Element] found at offset 0x00000768
     StructVersion  : 0x20
