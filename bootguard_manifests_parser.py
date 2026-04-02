@@ -25,25 +25,192 @@ SIGNATURES = {
 
 FIT_SIGNATURE = b"_FIT_   "  # 8 bytes, padded with spaces
 
+# Hash algorithm IDs → (name, digest_size)
+HASH_ALG_INFO = {
+    0x0004: ("SHA1",    20),
+    0x000B: ("SHA256",  32),
+    0x000C: ("SHA384",  48),
+    0x0012: ("SM3_256", 32),
+}
 
-def hex_dump(data, max_bytes=64):
+# Key/Signature algorithm names
+KEY_ALG_NAMES = {0x1: "RSA", 0x23: "ECC"}
+SIG_SCHEME_NAMES = {0x14: "RSASSA", 0x15: "RSAPSS", 0x16: "RSAPSS", 0x1B: "SM2"}
+
+KNOWN_ADDRESS = {0xFFFFFFF0: "Reset Vector"}
+
+def hex_dump(data, max_bytes=4096):
     """Return a hex string of data, truncated if needed."""
+
     preview = data[:max_bytes].hex(" ")
     if len(data) > max_bytes:
         preview += " ..."
+
     return preview
+
+
+def parse_shax_hash(data, pos, prefix, fields):
+    """Parse a SHAX_HASH_STRUCTURE at pos. Returns new pos after the structure."""
+
+    if pos + 4 > len(data):
+        return pos
+
+    hash_alg = struct.unpack_from("<H", data, pos)[0]
+    hash_size = struct.unpack_from("<H", data, pos + 2)[0]
+    alg_name = HASH_ALG_INFO.get(hash_alg, ("Unknown", 0))[0]
+
+    fields[f"{prefix}.HashAlg"] = f"0x{hash_alg:04X} ({alg_name})"
+    fields[f"{prefix}.Size"] = f"0x{hash_size:04X}"
+
+    if hash_size > 0 and pos + 4 + hash_size <= len(data):
+        fields[f"{prefix}.Hash"] = f"{data[pos + 4: pos + 4 + hash_size].hex()}\n"
+
+    return pos + 4 + hash_size
+
+
+def parse_hash_list(data, pos, prefix, fields):
+    """Parse a HASH_LIST (Size, Count) + Count x SHAX_HASH_STRUCTURE digests.
+    Returns new pos after all digests."""
+    if pos + 4 > len(data):
+        return pos
+
+    dl_size = struct.unpack_from("<H", data, pos)[0]
+    dl_count = struct.unpack_from("<H", data, pos + 2)[0]
+
+    fields[f"{prefix}.Size"] = f"0x{dl_size:04X}"
+    fields[f"{prefix}.Count"] = f"{dl_count}\n"
+
+    dpos = pos + 4
+
+    for i in range(dl_count):
+        dpos = parse_shax_hash(data, dpos, f"{prefix}.Digest[{i}]", fields)
+
+    return dpos
+
+
+def parse_key_and_signature(data, pos, prefix, fields):
+    """Parse KEY_AND_SIGNATURE_STRUCT at pos. Returns new pos after the structure."""
+
+    if pos + 3 > len(data):
+        return pos
+
+    fields[f"{prefix}.Version"] = f"0x{data[pos]:02X}"
+    key_alg = struct.unpack_from("<H", data, pos + 1)[0]
+   
+    fields[f"{prefix}.KeyAlg"] = f"0x{key_alg:04X} ({KEY_ALG_NAMES.get(key_alg, 'Unknown')})"
+    kpos = pos + 3  # after Version + KeyAlg
+
+    if key_alg == 0x1:  # RSA
+        # RSA_PUBLIC_KEY_STRUCT: Version(1) + KeySizeBits(2) + Exponent(4) + Modulus[KeySizeBits/8]
+        if kpos + 3 > len(data):
+            return kpos
+
+        fields[f"{prefix}.Key.Version"] = f"0x{data[kpos]:02X}"
+        key_size_bits = struct.unpack_from("<H", data, kpos + 1)[0]
+        fields[f"{prefix}.Key.KeySizeBits"] = key_size_bits
+
+        mod_bytes = key_size_bits // 8
+
+        if kpos + 7 > len(data):
+            return kpos
+
+        exponent = struct.unpack_from("<I", data, kpos + 3)[0]
+        fields[f"{prefix}.Key.Exponent"] = f"0x{exponent:08X}"
+        if kpos + 7 + mod_bytes <= len(data):
+            fields[f"{prefix}.Key.Modulus"] = f"{hex_dump(data[kpos + 7: kpos + 7 + mod_bytes])}\n"
+
+        kpos += 7 + mod_bytes
+
+        # SigScheme (UINT16)
+        if kpos + 2 > len(data):
+            return kpos
+
+        sig_scheme = struct.unpack_from("<H", data, kpos)[0]
+        fields[f"{prefix}.SigScheme"] = f"0x{sig_scheme:04X} ({SIG_SCHEME_NAMES.get(sig_scheme, 'Unknown')})"
+        kpos += 2
+
+        # RSASSA_SIGNATURE_STRUCT: Version(1) + KeySizeBits(2) + HashAlg(2) + Signature[KeySizeBits/8]
+        if kpos + 5 > len(data):
+            return kpos
+
+        fields[f"{prefix}.Sig.Version"] = f"0x{data[kpos]:02X}"
+        sig_size_bits = struct.unpack_from("<H", data, kpos + 1)[0]
+
+        fields[f"{prefix}.Sig.KeySizeBits"] = sig_size_bits
+        sig_hash_alg = struct.unpack_from("<H", data, kpos + 3)[0]
+
+        alg_name = HASH_ALG_INFO.get(sig_hash_alg, ("Unknown", 0))[0]
+        fields[f"{prefix}.Sig.HashAlg"] = f"0x{sig_hash_alg:04X} ({alg_name})"
+
+        sig_bytes = sig_size_bits // 8
+        if kpos + 5 + sig_bytes <= len(data):
+            fields[f"{prefix}.Sig.Signature"] = hex_dump(data[kpos + 5: kpos + 5 + sig_bytes])
+
+        kpos += 5 + sig_bytes
+
+    elif key_alg == 0x23:  # ECC
+        # ECC_PUBLIC_KEY_STRUCT: Version(1) + KeySizeBits(2) + Qx[32] + Qy[32]
+        if kpos + 3 > len(data):
+            return kpos
+        
+        fields[f"{prefix}.Key.Version"] = f"0x{data[kpos]:02X}"
+        key_size_bits = struct.unpack_from("<H", data, kpos + 1)[0]
+        fields[f"{prefix}.Key.KeySizeBits"] = key_size_bits
+        
+        key_len = key_size_bits // 8  # typically 32
+        if kpos + 3 + 2 * key_len <= len(data):
+            fields[f"{prefix}.Key.Qx"] = data[kpos + 3: kpos + 3 + key_len].hex()
+            fields[f"{prefix}.Key.Qy"] = data[kpos + 3 + key_len: kpos + 3 + 2 * key_len].hex()
+        
+        kpos += 3 + 2 * key_len
+
+        # SigScheme (UINT16)
+        if kpos + 2 > len(data):
+            return kpos
+
+        sig_scheme = struct.unpack_from("<H", data, kpos)[0]
+        fields[f"{prefix}.SigScheme"] = f"0x{sig_scheme:04X} ({SIG_SCHEME_NAMES.get(sig_scheme, 'Unknown')})"
+        kpos += 2
+
+        # ECC_SIGNATURE_STRUCT: Version(1) + KeySizeBits(2) + HashAlg(2) + R[key_len] + S[key_len]
+        if kpos + 5 > len(data):
+            return kpos
+
+        fields[f"{prefix}.Sig.Version"] = f"0x{data[kpos]:02X}"
+
+        sig_size_bits = struct.unpack_from("<H", data, kpos + 1)[0]
+        sig_hash_alg = struct.unpack_from("<H", data, kpos + 3)[0]
+
+        alg_name = HASH_ALG_INFO.get(sig_hash_alg, ("Unknown", 0))[0]
+
+        fields[f"{prefix}.Sig.KeySizeBits"] = sig_size_bits
+        fields[f"{prefix}.Sig.HashAlg"] = f"0x{sig_hash_alg:04X} ({alg_name})"
+
+        sig_len = sig_size_bits // 8
+
+        if kpos + 5 + 2 * sig_len <= len(data):
+            fields[f"{prefix}.Sig.R"] = data[kpos + 5: kpos + 5 + sig_len].hex()
+            fields[f"{prefix}.Sig.S"] = data[kpos + 5 + sig_len: kpos + 5 + 2 * sig_len].hex()
+        kpos += 5 + 2 * sig_len
+
+    return kpos
 
 
 def parse_acm_header(data, offset):
     """Try to identify ACM header at offset (heuristic: ModuleType == 2)."""
+    
     if offset + 4 > len(data):
         return None
+
     module_type = struct.unpack_from("<H", data, offset)[0]
     if module_type != 2:  # ACM_MODULE_TYPE_CHIPSET_ACM
         return None
+
     fields = {}
+
     if offset + 80 > len(data):
         return None
+
     (fields["ModuleType"], fields["ModuleSubType"], fields["HeaderLen"],
      fields["HeaderVersion"], fields["ChipsetId"], fields["Flags"],
      fields["ModuleVendor"], fields["Date"], fields["Size"],
@@ -51,6 +218,37 @@ def parse_acm_header(data, offset):
      fields["ErrorEntryPoint"], fields["GdtLimit"], fields["GdtBasePtr"],
      fields["SegSel"], fields["EntryPoint"]) = struct.unpack_from(
         "<HHIHHHIIIHHHIIIII", data, offset)
+
+    # Format some fields as hex
+    for k in ("Flags", "Date", "CodeControl", "ErrorEntryPoint",
+              "GdtBasePtr", "EntryPoint"):
+        if k in fields:
+            fields[k] = f"0x{fields[k]:08X}"
+    fields["Size"] = f"0x{int(fields['Size'], 16) if isinstance(fields['Size'], str) else fields['Size']:08X} ({fields['Size'] if isinstance(fields['Size'], int) else '?'} dwords)"
+
+    # Tail fields: Rsa2048PubKey[256], RsaPubExp(4), Rsa2048Sig[256], Scratch[572]
+    # The fixed header above is 68 bytes (0x44). HeaderLen is in dwords.
+    # The RSA fields start right after the base header.
+    pos = offset + 68  # end of base ACM header fields
+
+    if pos + 256 <= len(data):
+        fields["Rsa2048PubKey"] = hex_dump(data[pos:pos + 256])
+        pos += 256
+    else:
+        return fields
+
+    if pos + 4 <= len(data):
+        fields["RsaPubExp"] = f"0x{struct.unpack_from('<I', data, pos)[0]:08X}"
+        pos += 4
+
+    if pos + 256 <= len(data):
+        fields["Rsa2048Sig"] = hex_dump(data[pos:pos + 256])
+        pos += 256
+
+    if pos + 572 <= len(data):
+        fields["Scratch (572 bytes)"] = hex_dump(data[pos:pos + 572], max_bytes=32)
+        pos += 572
+
     return fields
 
 
@@ -108,11 +306,13 @@ def parse_fit_table(data, offset):
         addr = struct.unpack_from("<Q", data, e_off)[0]
         sz = int.from_bytes(data[e_off + 8: e_off + 11], "little")
         ver = struct.unpack_from("<H", data, e_off + 12)[0]
+
         tc = data[e_off + 14]
         ft = tc & 0x7F
         cv = (tc >> 7) & 1
         cs = data[e_off + 15]
         type_name = fit_type_names.get(ft, "Unknown")
+
         entries.append({
             "Index": i,
             "Address": f"0x{addr:016X}",
@@ -145,7 +345,24 @@ def parse_key_manifest(data, offset):
     fields["KmSvn"] = data[pos]; pos += 1
     fields["KeyManifestId"] = data[pos]; pos += 1
     fields["KmPubKeyHashAlg"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
-    fields["KeyCount"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+    
+    key_count = struct.unpack_from("<H", data, pos)[0]
+    
+    fields["KeyCount"] = f"{key_count}\n"; pos += 2
+
+    # KeyHash[KeyCount] — each is SHAX_KMHASH_STRUCT: Usage(UINT64) + SHAX_HASH_STRUCTURE
+    for i in range(key_count):
+        if pos + 8 > len(data):
+            break
+
+        usage = struct.unpack_from("<Q", data, pos)[0]
+        fields[f"KeyHash[{i}].Usage"] = f"0x{usage:016X}"
+
+        pos += 8
+        pos = parse_shax_hash(data, pos, f"KeyHash[{i}].Digest", fields)
+
+    # KeyManifestSignature: KEY_AND_SIGNATURE_STRUCT
+    pos = parse_key_and_signature(data, pos, "KeyManifestSignature", fields)
 
     return fields
 
@@ -200,14 +417,55 @@ def parse_ibb_element(data, offset):
     fields["DmaProtBase1"] = f"0x{struct.unpack_from('<Q', data, pos)[0]:016X}"; pos += 8
     fields["DmaProtLimit1"] = f"0x{struct.unpack_from('<Q', data, pos)[0]:016X}"; pos += 8
 
-    # PostIbbHash: SHAX_HASH_STRUCTURE (HashAlg, Size, then HashBuffer[])
-    if pos + 4 <= len(data):
-        hash_alg = struct.unpack_from("<H", data, pos)[0]
-        hash_size = struct.unpack_from("<H", data, pos + 2)[0]
-        fields["PostIbbHash.HashAlg"] = f"0x{hash_alg:04X}"
-        fields["PostIbbHash.Size"] = hash_size
-        if pos + 4 + hash_size <= len(data):
-            fields["PostIbbHash.Data"] = data[pos + 4: pos + 4 + hash_size].hex()
+    # PostIbbHash: SHAX_HASH_STRUCTURE
+    pos = parse_shax_hash(data, pos, "PostIbbHash", fields)
+
+    # IbbEntryPoint: UINT32
+    if pos + 4 > len(data):
+        return fields
+
+    #entrypoint = f"0x{struct.unpack_from('<I', data, pos)[0]:08X}\n"
+    entrypoint = struct.unpack_from('<I', data, pos)[0]
+    
+    known_entrypoint_name = KNOWN_ADDRESS.get(entrypoint, "Unknown")
+    fields["IbbEntryPoint"] = f"{hex(entrypoint).upper()} ({known_entrypoint_name})\n"
+        
+    pos += 4
+
+    # DigestList: HASH_LIST + Count x SHAX_HASH_STRUCTURE
+    pos = parse_hash_list(data, pos, "DigestList", fields)
+
+    # ObbHash: SHAX_HASH_STRUCTURE  (labelled HASH_STRUCTURE in some headers)
+    pos = parse_shax_hash(data, pos, "ObbHash", fields)
+
+    # Reserved2[3] + SegmentCount
+    if pos + 4 > len(data):
+        return fields
+
+    fields["Reserved2"] = f"{data[pos:pos + 3].hex()}\n"
+    pos += 3
+
+    seg_count = data[pos]
+    fields["SegmentCount"] = f"{seg_count}"
+    pos += 1
+
+    # IbbSegment[SegmentCount] — each IBB_SEGMENT is 12 bytes
+    for i in range(seg_count):
+        if pos + 12 > len(data):
+            break
+
+        seg_reserved = struct.unpack_from("<H", data, pos)[0]
+        seg_flags = struct.unpack_from("<H", data, pos + 2)[0]
+        seg_base = struct.unpack_from("<I", data, pos + 4)[0]
+        seg_size = struct.unpack_from("<I", data, pos + 8)[0]
+
+        flag_name = "IBB" if seg_flags == 0 else "NON_IBB"
+
+        fields[f"IbbSegment[{i}].Reserved"] = f"0x{seg_reserved:04X}"
+        fields[f"IbbSegment[{i}].Flags"] = f"0x{seg_flags:04X} ({flag_name})"
+        fields[f"IbbSegment[{i}].Base"] = f"0x{seg_base:08X}"
+        fields[f"IbbSegment[{i}].Size"] = f"0x{seg_size:08X}\n"
+        pos += 12
 
     return fields
 
@@ -244,7 +502,7 @@ def parse_txt_element(data, offset):
     dl_count = struct.unpack_from("<H", data, pos + 2)[0]
     
     fields["DigestList.Size"] = f"0x{dl_size:04X}"
-    fields["DigestList.Count"] = dl_count
+    fields["DigestList.Count"] = f"{dl_count}\n"
 
     digest_start = pos + 4  # skip HASH_LIST header (Size + Count)
 
@@ -270,8 +528,10 @@ def parse_txt_element(data, offset):
 
     fields["Reserved3"] = data[dpos:dpos + 3].hex()
     dpos += 3
+
     seg_count = data[dpos]
     fields["SegmentCount"] = seg_count
+
     dpos += 1
 
     # TxtSegment[SegmentCount] — each IBB_SEGMENT is 12 bytes:
@@ -357,13 +617,8 @@ def parse_pmsg_element(data, offset):
     fields["StructVersion"] = f"0x{data[pos]:02X}"; pos += 1
     fields["Reserved"] = data[pos:pos+3].hex(); pos += 3
 
-    # KEY_AND_SIGNATURE_STRUCT starts here
-    if pos + 3 <= len(data):
-        fields["KeySig.Version"] = f"0x{data[pos]:02X}"
-        key_alg = struct.unpack_from("<H", data, pos + 1)[0]
-        fields["KeySig.KeyAlg"] = f"0x{key_alg:04X}"
-        alg_name = {0x1: "RSA", 0x23: "ECC"}.get(key_alg, "Unknown")
-        fields["KeySig.KeyAlg_Name"] = alg_name
+    # KEY_AND_SIGNATURE_STRUCT
+    pos = parse_key_and_signature(data, pos, "KeySig", fields)
 
     return fields
 
@@ -434,12 +689,15 @@ def main():
     else:
         for off in fit_offsets:
             print(f"\n  FIT found at offset 0x{off:08X}")
+
             entries = parse_fit_table(data, off)
             if entries:
                 header = entries[0]
+                
                 print(f"  Number of entries: {header.get('NumEntries', '?')}")
                 print(f"  {'Idx':<5} {'Type':<30} {'Address':<20} {'Size(x16)':<12} {'Ver':<8} {'C_V':<5} {'Chk'}")
                 print(f"  {'-'*5} {'-'*30} {'-'*20} {'-'*12} {'-'*8} {'-'*5} {'-'*6}")
+                
                 for e in entries:
                     idx = e.get("Index", "")
                     typ = e.get("Type", "")
@@ -460,6 +718,7 @@ def main():
         offsets = find_all_occurrences(data, sig)
         if not offsets:
             continue
+            
         for off in offsets:
             print(f"\n  [{description}] found at offset 0x{off:08X}")
             if sig in PARSERS:
