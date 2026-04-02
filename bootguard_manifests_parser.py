@@ -316,7 +316,7 @@ def parse_fit_table(data, offset):
         entries.append({
             "Index": i,
             "Address": f"0x{addr:016X}",
-            "Size (x16)": sz,
+            "Size (x16)": hex(sz),
             "Version": f"0x{ver:04X}",
             "Type": f"0x{ft:02X} ({type_name})",
             "C_V": cv,
