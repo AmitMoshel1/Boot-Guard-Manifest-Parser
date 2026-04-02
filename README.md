@@ -33,7 +33,7 @@ Searching for Boot Guard structures
   [Key Manifest (KM)] found at offset 0x00000200
     StructVersion       : 0x21
     Reserved            : 000000
-    KeySignatureOffset  : 68
+    KeySignatureOffset  : 0x0044
     Reserved2           : 000000
     KeyManifestRevision : 1
     KmSvn               : 0
@@ -44,8 +44,8 @@ Searching for Boot Guard structures
   [Boot Policy Manifest (BPM) Header] found at offset 0x00000600
     StructVersion      : 0x21
     HdrStructVersion   : 0x20
-    HdrSize            : 20
-    KeySignatureOffset : 408
+    HdrSize            : 0x0014
+    KeySignatureOffset : 0x0198
     BpmRevision        : 1
     BpmRevocation      : 1
     AcmRevocation      : 2
@@ -55,7 +55,7 @@ Searching for Boot Guard structures
   [IBB Element] found at offset 0x00000614
     StructVersion       : 0x20
     Reserved0           : 0
-    ElementSize         : 300
+    ElementSize         : 0x012C
     Reserved1           : 0
     SetType             : 0
     Reserved            : 0
@@ -74,26 +74,26 @@ Searching for Boot Guard structures
   [TXT Element] found at offset 0x00000740
     StructVersion    : 0x20
     Reserved0        : 0
-    ElementSize      : 40
+    ElementSize      : 0x0028
     Reserved1        : 0
     SetType          : 0
     Reserved         : 0
     Flags            : 0x00000000
     PwrDownInterval  : 62
-    PttCmosOffset0   : 254
-    PttCmosOffset1   : 255
-    AcpiBaseOffset   : 1024
+    PttCmosOffset0   : 0xFE
+    PttCmosOffset1   : 0xFF
+    AcpiBaseOffset   : 0x0400
     Reserved2        : 0
-    PrwmBaseOffset   : 4261412864
+    PrwmBaseOffset   : 0xFE000000
     DigestList.Size  : 4
     DigestList.Count : 0
 
   [Platform Config Data Element] found at offset 0x00000768
     StructVersion  : 0x20
     Reserved0      : 0
-    ElementSize    : 36
+    ElementSize    : 0x0024
     Reserved1      : 0
-    SizeOfData     : 20
+    SizeOfData     : 0x0014
     Data (preview) : 5f 5f 50 44 52 53 5f 5f 10 09 00 00 03 70 00 71 00 03 00 2b
 
   [BPM Signature Element] found at offset 0x0000078C

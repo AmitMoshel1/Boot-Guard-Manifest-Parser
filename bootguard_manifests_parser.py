@@ -56,6 +56,7 @@ def parse_acm_header(data, offset):
 
 def parse_fit_table(data, offset):
     """Parse FIT entries starting at offset where FIT_SIGNATURE was found."""
+    
     entry_size = 16  # sizeof(FIRMWARE_INTERFACE_TABLE_ENTRY)
     entries = []
 
@@ -127,52 +128,66 @@ def parse_fit_table(data, offset):
 
 def parse_key_manifest(data, offset):
     """Parse KEY_MANIFEST_STRUCTURE at offset."""
+
     fields = {}
+
     # 8 + 1 + 3 + 2 + 3 + 1 + 1 + 1 + 2 + 2 = 24 bytes minimum
     if offset + 24 > len(data):
         return fields
+
     pos = offset + 8  # skip StructureId
+
     fields["StructVersion"] = f"0x{data[pos]:02X}"; pos += 1
     fields["Reserved"] = data[pos:pos+3].hex(); pos += 3
-    fields["KeySignatureOffset"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+    fields["KeySignatureOffset"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
     fields["Reserved2"] = data[pos:pos+3].hex(); pos += 3
     fields["KeyManifestRevision"] = data[pos]; pos += 1
     fields["KmSvn"] = data[pos]; pos += 1
     fields["KeyManifestId"] = data[pos]; pos += 1
     fields["KmPubKeyHashAlg"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
     fields["KeyCount"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+
     return fields
 
 
 def parse_bpm_header(data, offset):
     """Parse BOOT_POLICY_MANIFEST_HEADER at offset."""
+
     fields = {}
+
     # Minimum size: 8+1+1+2+2+1+1+1+1+2 = 20
     if offset + 20 > len(data):
         return fields
+
     pos = offset + 8
+
     fields["StructVersion"] = f"0x{data[pos]:02X}"; pos += 1
     fields["HdrStructVersion"] = f"0x{data[pos]:02X}"; pos += 1
-    fields["HdrSize"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
-    fields["KeySignatureOffset"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+    fields["HdrSize"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
+    fields["KeySignatureOffset"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
     fields["BpmRevision"] = data[pos]; pos += 1
     fields["BpmRevocation"] = data[pos]; pos += 1
     fields["AcmRevocation"] = data[pos]; pos += 1
     fields["Reserved"] = data[pos]; pos += 1
     fields["NemPages"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+
     return fields
 
 
 def parse_ibb_element(data, offset):
     """Parse IBB_ELEMENT at offset."""
+
     fields = {}
+
     # Minimum: 8+1+1+2+1+1+1+1+4+8+8+4+4+8+8 = 60 bytes before PostIbbHash
     if offset + 60 > len(data):
         return fields
+
     pos = offset + 8
+
     fields["StructVersion"] = f"0x{data[pos]:02X}"; pos += 1
     fields["Reserved0"] = data[pos]; pos += 1
-    fields["ElementSize"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+    fields["ElementSize"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
     fields["Reserved1"] = data[pos]; pos += 1
     fields["SetType"] = data[pos]; pos += 1
     fields["Reserved"] = data[pos]; pos += 1
@@ -199,23 +214,27 @@ def parse_ibb_element(data, offset):
 
 def parse_txt_element(data, offset):
     """Parse TXT_ELEMENT at offset."""
+
     fields = {}
+
     if offset + 34 > len(data):
         return fields
+
     pos = offset + 8
+
     fields["StructVersion"] = f"0x{data[pos]:02X}"; pos += 1
     fields["Reserved0"] = data[pos]; pos += 1
-    fields["ElementSize"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+    fields["ElementSize"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
     fields["Reserved1"] = data[pos]; pos += 1
     fields["SetType"] = data[pos]; pos += 1
     fields["Reserved"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
     fields["Flags"] = f"0x{struct.unpack_from('<I', data, pos)[0]:08X}"; pos += 4
     fields["PwrDownInterval"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
-    fields["PttCmosOffset0"] = data[pos]; pos += 1
-    fields["PttCmosOffset1"] = data[pos]; pos += 1
-    fields["AcpiBaseOffset"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+    fields["PttCmosOffset0"] = f"0x{data[pos]:02X}"; pos += 1
+    fields["PttCmosOffset1"] = f"0x{data[pos]:02X}"; pos += 1
+    fields["AcpiBaseOffset"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
     fields["Reserved2"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
-    fields["PrwmBaseOffset"] = struct.unpack_from("<I", data, pos)[0]; pos += 4
+    fields["PrwmBaseOffset"] = f"0x{struct.unpack_from('<I', data, pos)[0]:08X}"; pos += 4
 
     # DigestList: HASH_LIST (Size, Count)
     if pos + 4 <= len(data):
@@ -229,46 +248,64 @@ def parse_txt_element(data, offset):
 
 def parse_pcd_element(data, offset):
     """Parse PLATFORM_CONFIG_DATA_ELEMENT at offset."""
+
     fields = {}
+
     if offset + 16 > len(data):
         return fields
+
     pos = offset + 8
+
     fields["StructVersion"] = f"0x{data[pos]:02X}"; pos += 1
     fields["Reserved0"] = data[pos]; pos += 1
-    fields["ElementSize"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+    fields["ElementSize"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
     fields["Reserved1"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
-    fields["SizeOfData"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
-    data_size = fields["SizeOfData"]
+    fields["SizeOfData"] = f"0x{struct.unpack_from('<H', data, pos)[0]:04X}"; pos += 2
+
+    data_size = int(fields["SizeOfData"], 16)
     if data_size > 0 and pos + data_size <= len(data):
         fields["Data (preview)"] = hex_dump(data[pos: pos + data_size])
+
     return fields
 
 
 def parse_pmda_element(data, offset):
     """Parse PLATFORM_MANUFACTURER_ELEMENT at offset."""
+
     fields = {}
+
     if offset + 16 > len(data):
         return fields
+
     pos = offset + 8
+
     fields["StructVersion"] = f"0x{data[pos]:02X}"; pos += 1
     fields["Reserved0"] = data[pos]; pos += 1
     fields["ElementSize"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
     fields["Reserved1"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
     fields["PmDataSize"] = struct.unpack_from("<H", data, pos)[0]; pos += 2
+
     pm_size = fields["PmDataSize"]
+
     if pm_size > 0 and pos + pm_size <= len(data):
         fields["PmData (preview)"] = hex_dump(data[pos: pos + pm_size])
+
     return fields
 
 
 def parse_pmsg_element(data, offset):
     """Parse BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT at offset."""
+
     fields = {}
+
     if offset + 12 > len(data):
         return fields
+
     pos = offset + 8
+
     fields["StructVersion"] = f"0x{data[pos]:02X}"; pos += 1
     fields["Reserved"] = data[pos:pos+3].hex(); pos += 3
+
     # KEY_AND_SIGNATURE_STRUCT starts here
     if pos + 3 <= len(data):
         fields["KeySig.Version"] = f"0x{data[pos]:02X}"
@@ -276,6 +313,7 @@ def parse_pmsg_element(data, offset):
         fields["KeySig.KeyAlg"] = f"0x{key_alg:04X}"
         alg_name = {0x1: "RSA", 0x23: "ECC"}.get(key_alg, "Unknown")
         fields["KeySig.KeyAlg_Name"] = alg_name
+
     return fields
 
 
@@ -294,21 +332,26 @@ def print_fields(fields, indent=4):
     if not fields:
         print(f"{' ' * indent}(no fields parsed)")
         return
+
     max_key = max(len(k) for k in fields)
+
     for key, val in fields.items():
         print(f"{' ' * indent}{key:<{max_key}} : {val}")
 
 
 def find_all_occurrences(data, pattern):
     """Find all offsets of pattern in data."""
+
     offsets = []
     start = 0
+
     while True:
         idx = data.find(pattern, start)
         if idx == -1:
             break
         offsets.append(idx)
         start = idx + 1
+
     return offsets
 
 
@@ -316,6 +359,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Parse Boot Guard structures from a binary file."
     )
+
     parser.add_argument("binfile", help="Path to the binary file to parse")
     args = parser.parse_args()
 
@@ -331,7 +375,9 @@ def main():
     print("=" * 70)
     print("Searching for Firmware Interface Table (FIT)")
     print("=" * 70)
+
     fit_offsets = find_all_occurrences(data, FIT_SIGNATURE)
+
     if not fit_offsets:
         print("  FIT signature not found.\n")
     else:
