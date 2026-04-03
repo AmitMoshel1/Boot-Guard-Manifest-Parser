@@ -1,6 +1,6 @@
 ## Boot Guard Manifest Parser
 
-A python3 script that takes a path to a bin file as an argument, parses it and outputs the FIT table entries and the manifest structures verified by **Intel Boot Guard's ACM**. 
+A python3 script that takes a path to a dump (can be a full flash dump or only BIOS Region dump) as an argument, parses it and outputs the Firmware Interface Table entries and the Manifest structures verified by **Intel Boot Guard's ACM**. 
 
 An output example:
 
@@ -9,14 +9,14 @@ An output example:
 Searching for Firmware Interface Table (FIT)
 ======================================================================
 
-  FIT found at offset 0x00000C00
+  FIT found at offset 0x00FFAC00
   Number of entries: 12
-  Idx   Type                           Address              Size(x16)    Ver      C_V   Chk
+  Idx   Type                           Address              Size         Ver      C_V   Chk
   ----- ------------------------------ -------------------- ------------ -------- ----- ------
-  0     0x00 (Header)                  0x2020205F5449465F   12           0x0100   1     0x9C
-  1     0x01 (Microcode)               0x00000000FFC81000   0x0          0x0100   0     0x00
-  2     0x01 (Microcode)               0x00000000FFCBC000   0x0          0x0100   0     0x00
-  3     0x02 (Startup ACM)             0x00000000FFC40000   0x0          0x0100   0     0x00
+  0     0x00 (Header)                  0x2020205F5449465F   12           0x0100   1     0xCD
+  1     0x01 (Microcode)               0x00000000FFC80060   0x2E000      0x0100   0     0x00
+  2     0x01 (Microcode)               0x00000000FFCAE060   0x2B400      0x0100   0     0x00
+  3     0x02 (Startup ACM)             0x00000000FFC40000   0x9400       0x0100   0     0x00
   4     0x07 (BIOS Startup Module)     0x00000000FFD3D000   0x8600       0x0100   0     0x00
   5     0x07 (BIOS Startup Module)     0x00000000FFE72000   0x15000      0x0100   0     0x00
   6     0x07 (BIOS Startup Module)     0x00000000FFFC2000   0x1000       0x0100   0     0x00
@@ -24,13 +24,13 @@ Searching for Firmware Interface Table (FIT)
   8     0x07 (BIOS Startup Module)     0x00000000FFFD3000   0x2720       0x0100   0     0x00
   9     0x07 (BIOS Startup Module)     0x00000000FFFFAD00   0x530        0x0100   0     0x00
   10    0x0B (Key Manifest)            0x00000000FFFFA200   0x355        0x0100   0     0x00
-  11    0x0C (Boot Policy Manifest)    0x00000000FFFFA600   0x3a9        0x0100   0     0x00
+  11    0x0C (Boot Policy Manifest)    0x00000000FFFFA600   0x3A9        0x0100   0     0x00
 
 ======================================================================
 Searching for Boot Guard structures
 ======================================================================
 
-  [Key Manifest (KM)] found at offset 0x00000200
+  [Key Manifest (KM)] found at offset 0x00FFA200
     StructVersion                        : 0x21
     Reserved                             : 000000
     KeySignatureOffset                   : 0x0044
@@ -57,9 +57,9 @@ Searching for Boot Guard structures
     KeyManifestSignature.Sig.Version     : 0x10
     KeyManifestSignature.Sig.KeySizeBits : 3072
     KeyManifestSignature.Sig.HashAlg     : 0x000C (SHA384)
-    KeyManifestSignature.Sig.Signature   : a1 c7 93 15 c4 25 27 24 40 79 ae 96 33 ab b6 06 ab 5a 0a be 73 18 35 07 a8 85 62 be 52 5b 29 42 d1 6e 9c b0 ce 12 ef 96 5f 78 2d d1 73 26 44 26 cb d5 9a f7 88 4a 10 db e1 e6 91 d8 2f 1b 57 bf 0e c0 fc f0 9b 42 34 3e 93 ac 54 97 e3 fd db 6e 07 ec 91 0d c0 d8 8b 38 e5 f8 40 8f 6b 60 7e 6b f2 58 74 ab 6e 9f 62 a1 72 73 e4 fc 02 2a dc 46 06 0e 4e 21 d2 85 56 3b 1c 79 26 72 59 dd 85 24 c9 80 16 e6 e9 47 07 a2 fb a1 9c 20 cb e5 0e b4 d2 17 80 c5 a7 33 73 92 eb 2d 62 fa b2 59 52 e9 0a 31 40 3d c0 2e e2 e1 3d dd 50 d2 d4 1d 8d 6b 21 e4 10 1c 31 e2 d9 84 a9 6c 11 1e b7 a1 85 b1 a6 4f d8 60 27 50 9e 6f 99 3e bf d6 a6 a3 25 b5 db 84 51 bc f5 7a 25 4b b1 28 fc 8b 4a 38 9c f0 ad 13 7c 21 cb 59 72 00 ce c8 94 b7 7d ff b3 2c 65 67 7a 57 35 c9 30 f1 f4 90 80 22 10 bf f7 65 9c ed 10 84 1c 14 32 df 23 a4 61 1b fd 47 c0 48 14 91 66 95 02 40 2f 8b 94 bb 9c b3 95 be e4 b6 8f d7 07 4c a4 42 92 7b 4c 22 0a bf 2f 39 79 35 42 50 2c bf f2 2a 19 02 91 4c c9 c5 82 03 61 90 64 ca 93 87 ee 17 ba f0 d9 82 4e 4b dd f1 b2 29 b6 c2 0d ea db 4e 39 c3 3a ba b5 d8 da f4 3b 78 7a 54 5f 08 48 e4 21 b5 37 5b 1f 1f 23 e2 39 9d 9f 57 77 0a 13 77 de 7d bc ee 32 09 2c 14 53 92
+    KeyManifestSignature.Sig.Signature   : 32 e3 62 2a 8c fe 71 36 17 96 b1 d8 c7 65 1e f4 15 4c 6b ad 36 ad 86 6c 53 c4 61 61 33 2a 3c b0 49 19 29 60 85 56 e4 cc df 18 d5 fe f8 b6 8c 04 60 8a f1 87 f4 62 c1 c8 4e 8e 0b df 05 9b 9e 25 91 5c 2d 40 5f d9 25 60 da 82 a9 ac 1a 93 73 ce 58 47 aa 3e 26 1d 8c 3b e7 6d 25 bd 0b a9 70 07 1e f0 69 21 fc 27 f2 e5 03 56 00 ea 6e ed cc b8 d8 3e cb 97 fb 30 0b 4d 92 db 5b d1 40 64 8d ee 6c 7a b0 d1 7a e4 da f9 0b 6f a3 2f 1d a5 98 3e 36 0b a6 6a 96 3a b5 58 5a ad b7 b4 78 1a 74 20 d3 ea a4 9f 18 6f 76 33 bf 94 2a 41 a4 8a 82 d9 87 4c e8 ca d2 02 37 1c d6 8f 95 b7 65 0f 53 f3 88 f0 76 b2 68 44 03 9e 76 73 fa 05 b5 92 58 52 43 f5 c2 6d 84 4c a3 ac ac d6 3d 92 d7 d3 c5 19 cf ba 7e 0e 38 01 ae ad 92 14 f0 c2 e0 57 8f f6 2d f0 16 30 41 77 7a b7 77 c3 d5 8e 0b 34 9e d3 5b f9 e9 7b bf c2 d2 08 bc ae 90 3f 5b 71 ab b5 e4 2b 41 fd 54 76 1c 6d 92 9d d7 32 68 55 bd 63 cf 95 fc fb 61 b1 a4 fe 76 39 47 35 9f bf 59 6d c4 02 8f 41 76 c6 5b 58 c5 ab 6a 61 1f 3c 93 31 cd 5c 86 6d dd a4 a2 6c 4a 0f 50 2c ce 6c 7c 59 2c 2d 6c 1b f9 32 ed 8e e0 0c 51 57 f8 33 e0 2e 28 80 04 71 cc c0 ff 68 43 fe dd b7 20 da bf a8 fd cb f4 f2 d1 36 9a 98 c6 92 dc 14 1c e1 43 e2
 
-  [Boot Policy Manifest (BPM) Header] found at offset 0x00000600
+  [Boot Policy Manifest (BPM) Header] found at offset 0x00FFA600
     StructVersion      : 0x21
     HdrStructVersion   : 0x20
     HdrSize            : 0x0014
@@ -70,7 +70,7 @@ Searching for Boot Guard structures
     Reserved           : 0
     NemPages           : 3
 
-  [IBB Element] found at offset 0x00000614
+  [IBB Element] found at offset 0x00FFA614
     StructVersion                : 0x20
     Reserved0                    : 0
     ElementSize                  : 0x012C
@@ -94,19 +94,19 @@ Searching for Boot Guard structures
 
     DigestList.Digest[0].HashAlg : 0x000B (SHA256)
     DigestList.Digest[0].Size    : 0x0020
-    DigestList.Digest[0].Hash    : 1465e41fbd5ff72c0a479d53eb33cc4516f7595f3218f0f8cab38f1038e23c38
+    DigestList.Digest[0].Hash    : 8153b3fc3a72fd76299e9a30d28fed4146a3554bae7e18906d9a5e04a7355a4e
 
     DigestList.Digest[1].HashAlg : 0x0004 (SHA1)
     DigestList.Digest[1].Size    : 0x0014
-    DigestList.Digest[1].Hash    : 6504cad58310803e8bbe16d44d973e1afcdbfa20
+    DigestList.Digest[1].Hash    : 86eb8587fff3510ed9bbf2ac018dfd90df56d05a
 
     DigestList.Digest[2].HashAlg : 0x000C (SHA384)
     DigestList.Digest[2].Size    : 0x0030
-    DigestList.Digest[2].Hash    : 4b1aafd8071e0e3ae9aab03319aa98fd078d33aa73e26ef1c131063723b328c67af1273a3b5cae0ca7526b32ac88106b
+    DigestList.Digest[2].Hash    : 1ac55b9c58afa0c1a0f9b3bad3cc33bfc7e6484286eea4b6e519c16a00125cf0f0432f20f855c7f38d9644625205edbd
 
     DigestList.Digest[3].HashAlg : 0x0012 (SM3_256)
     DigestList.Digest[3].Size    : 0x0020
-    DigestList.Digest[3].Hash    : cec8cb0e787854d20524c76e9dd7f35afcb8613b25dece5ae3465b143ebeefca
+    DigestList.Digest[3].Hash    : f183ba9a02d048f689dac28160c97d80e694696e405fc473aa800ca7457b5ed4
 
     ObbHash.HashAlg              : 0x0010 (Unknown)
     ObbHash.Size                 : 0x0000
@@ -116,35 +116,35 @@ Searching for Boot Guard structures
     IbbSegment[0].Reserved       : 0x0000
     IbbSegment[0].Flags          : 0x0000 (IBB)
     IbbSegment[0].Base           : 0xFFD3D000
-    IbbSegment[0].Size           : 0x00086000
+    IbbSegment[0].Size           : 0x00008600
 
     IbbSegment[1].Reserved       : 0x0000
     IbbSegment[1].Flags          : 0x0000 (IBB)
     IbbSegment[1].Base           : 0xFFE72000
-    IbbSegment[1].Size           : 0x00150000
+    IbbSegment[1].Size           : 0x00015000
 
     IbbSegment[2].Reserved       : 0x0000
     IbbSegment[2].Flags          : 0x0000 (IBB)
     IbbSegment[2].Base           : 0xFFFC2000
-    IbbSegment[2].Size           : 0x00010000
+    IbbSegment[2].Size           : 0x00001000
 
     IbbSegment[3].Reserved       : 0x0000
     IbbSegment[3].Flags          : 0x0000 (IBB)
     IbbSegment[3].Base           : 0xFFFD2000
-    IbbSegment[3].Size           : 0x00001000
+    IbbSegment[3].Size           : 0x00000100
 
     IbbSegment[4].Reserved       : 0x0000
     IbbSegment[4].Flags          : 0x0000 (IBB)
     IbbSegment[4].Base           : 0xFFFD3000
-    IbbSegment[4].Size           : 0x00027200
+    IbbSegment[4].Size           : 0x00002720
 
     IbbSegment[5].Reserved       : 0x0000
     IbbSegment[5].Flags          : 0x0000 (IBB)
     IbbSegment[5].Base           : 0xFFFFAD00
-    IbbSegment[5].Size           : 0x00005300
+    IbbSegment[5].Size           : 0x00000530
 
 
-  [TXT Element] found at offset 0x00000740
+  [TXT Element] found at offset 0x00FFA740
     StructVersion    : 0x20
     Reserved0        : 0
     ElementSize      : 0x0028
@@ -164,7 +164,7 @@ Searching for Boot Guard structures
     Reserved3        : 000000
     SegmentCount     : 0
 
-  [Platform Config Data Element] found at offset 0x00000768
+  [Platform Config Data Element] found at offset 0x00FFA768
     StructVersion  : 0x20
     Reserved0      : 0
     ElementSize    : 0x0024
@@ -172,7 +172,7 @@ Searching for Boot Guard structures
     SizeOfData     : 0x0014
     Data (preview) : 5f 5f 50 44 52 53 5f 5f 10 09 00 00 03 70 00 71 00 03 00 2b
 
-  [BPM Signature Element] found at offset 0x0000078C
+  [BPM Signature Element] found at offset 0x00FFA78C
     StructVersion          : 0x20
     Reserved               : 000000
     KeySig.Version         : 0x10
@@ -186,8 +186,8 @@ Searching for Boot Guard structures
     KeySig.Sig.Version     : 0x10
     KeySig.Sig.KeySizeBits : 2048
     KeySig.Sig.HashAlg     : 0x000B (SHA256)
-    KeySig.Sig.Signature   : 00 4d c0 26 70 76 ec c3 ec 72 84 a0 5f 41 3d bc 93 84 09 a8 4d 13 33 43 76 94 a1 8f cb 84 bb f6 0e de 3a 48 88 be 18 ba 7a 17 b4 71 1e 08 a7 49 6d e3 64 f5 52 5c 5f d6 e8 f5 8b 08 b5 8f 5c 79 b1 89 4a 07 17 5d 2d a3 2e 2a 8c d9 ae e9 0f bf b7 73 2d cf c0 ea ad f4 11 31 a0 88 99 5d bf ab ef 8b 31 38 45 f4 8c 8f 0b d3 a7 6d f6 dc 24 b0 48 01 91 8f 4d f7 5b 7d a5 fa 30 6e 25 f0 a3 6a 2d 10 f5 86 cf c5 27 b9 b3 9b 1a 5e b6 2d 29 8f 0c 46 bf a0 f6 9b d4 67 f6 59 00 9e 06 82 b6 af d5 98 9e e1 e4 55 ee 54 0d 1f a8 d3 e1 50 39 38 fd 79 6a 00 cc 71 32 a6 8a 35 3b ec 7e 36 66 b7 0e 9e ef f2 d6 53 64 9a 70 0c 45 bc f1 e9 6f b5 6c a2 6c ed 3e d4 09 fe 25 e7 85 da 01 7e 58 e2 f4 99 53 0d dc d4 f2 e6 67 c3 0d aa cb c5 b0 44 2a ed 2d 0e de 97 b5 5e ad a3 07 73 00 30 5f 92
+    KeySig.Sig.Signature   : bb fd d5 14 25 db 54 ca 0c 36 8b dd ae 97 ed 06 29 ad f9 d8 86 72 14 5f 8f 8c 31 07 0d e9 ec 93 a2 e1 b3 0d 56 32 05 23 83 fd ee 76 70 23 76 a9 46 77 cf 0d 6c 14 2f 06 b0 47 80 63 8e 55 38 67 90 5c 84 ea 8f 0b 63 b1 cf 83 57 cd f2 43 04 32 1d 54 29 bf bb f7 b6 9c 29 d8 80 a5 9a 91 f0 5e 9a 76 67 56 21 e2 5b 69 31 16 4f 8d 37 b4 a2 7d 03 4a ce f6 d3 ee d1 cc 6e 10 70 4d 0f 8c 5c 3f 72 45 94 ab 48 f6 20 a4 d0 2c aa c4 8b c2 a7 39 58 79 44 39 ba 88 77 a4 e9 1d 31 bb 1d cc 07 a9 12 36 34 30 79 5c da d5 6d 2d 0f ba 71 4d 26 54 4b 29 44 ba 72 30 9d c3 82 a7 a5 bd 4d 56 4d 0d 03 a3 72 6f e4 ba 46 3a cf ed cc 50 63 cf 82 71 be 90 09 b3 98 d1 23 c3 67 f1 a0 19 79 14 2b 69 91 ea 51 a6 26 32 44 17 c2 aa 50 fb 3a e6 8f 75 41 3c 77 b2 78 71 4c e6 69 fc ab 56 25 85 29 3e
 
-Done.
+Done
 
 ```

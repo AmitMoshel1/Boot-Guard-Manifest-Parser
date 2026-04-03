@@ -191,6 +191,7 @@ def parse_key_and_signature(data, pos, prefix, fields):
         if kpos + 5 + 2 * sig_len <= len(data):
             fields[f"{prefix}.Sig.R"] = data[kpos + 5: kpos + 5 + sig_len].hex()
             fields[f"{prefix}.Sig.S"] = data[kpos + 5 + sig_len: kpos + 5 + 2 * sig_len].hex()
+
         kpos += 5 + 2 * sig_len
 
     return kpos
@@ -263,12 +264,16 @@ def parse_fit_table(data, offset):
         return entries
 
     header_addr = struct.unpack_from("<Q", data, offset)[0]
+
     size_bytes = data[offset + 8: offset + 11]
     num_entries = int.from_bytes(size_bytes, "little")
+
     reserved = data[offset + 11]
     version = struct.unpack_from("<H", data, offset + 12)[0]
     type_cv = data[offset + 14]
+
     fit_type = type_cv & 0x7F
+
     c_v = (type_cv >> 7) & 1
     chksum = data[offset + 15]
 
@@ -299,6 +304,79 @@ def parse_fit_table(data, offset):
         0x7F: "Skip",
     }
 
+    # --- Flash-to-file-offset conversion ---
+    # Strategy 1 (full image): flash_base = 4G - file_size
+    # Strategy 2 (extracted region): derive flash_base from known signatures
+    #   e.g. __KEYM__ found at file offset X, FIT says its flash addr is Y
+    #   → flash_base = Y - X
+    flash_base_full = 0x100000000 - len(data)
+
+    # Try to derive flash base from known structures in the file
+    flash_base_derived = None
+    sig_to_fit_type = {b"__KEYM__": 0x0B, b"__ACBP__": 0x0C}
+    for sig, expected_ft in sig_to_fit_type.items():
+        local_off = data.find(sig)
+
+        if local_off == -1:
+            continue
+
+        # Find the FIT entry with matching type and look for address alignment
+        for j in range(1, num_entries):
+            je_off = offset + j * entry_size
+            if je_off + entry_size > len(data):
+                break
+
+            jft = data[je_off + 14] & 0x7F
+            if jft != expected_ft:
+                continue
+
+            fit_addr = struct.unpack_from("<Q", data, je_off)[0]
+            candidate_base = fit_addr - local_off
+
+            if candidate_base > 0:
+                flash_base_derived = candidate_base
+                break
+
+        if flash_base_derived is not None:
+            break
+
+    def flash_to_offset(addr):
+        """Convert a flash-mapped physical address to a file offset.
+        Tries full-image base first, then derived base (for extracted regions)."""
+        for base in (flash_base_full, flash_base_derived):
+            if base is None:
+                continue
+            off = addr - base
+            if 0 <= off < len(data):
+                return off
+        return None
+
+    def resolve_microcode_size(addr):
+        """Read TotalSize from a microcode update header (UINT32 at offset 0x20)."""
+
+        file_off = flash_to_offset(addr)
+
+        if file_off is None or file_off + 0x24 > len(data):
+            return 0
+
+        total_size = struct.unpack_from("<I", data, file_off + 0x20)[0]
+        if total_size == 0:
+            # Per spec: if TotalSize is 0, use DataSize + 48
+            data_size = struct.unpack_from("<I", data, file_off + 0x1C)[0]
+            total_size = data_size + 48
+        return total_size
+
+    def resolve_acm_size(addr):
+        """Read Size (in dwords) from an ACM header (UINT32 at offset 0x18).
+        Returns the raw dword value — the FIT Size field for ACM is in dwords."""
+
+        file_off = flash_to_offset(addr)
+        if file_off is None or file_off + 0x1C > len(data):
+            return 0
+            
+        size_dwords = struct.unpack_from("<I", data, file_off + 0x18)[0]
+        return size_dwords
+
     for i in range(1, num_entries):
         e_off = offset + i * entry_size
         if e_off + entry_size > len(data):
@@ -313,10 +391,16 @@ def parse_fit_table(data, offset):
         cs = data[e_off + 15]
         type_name = fit_type_names.get(ft, "Unknown")
 
+        # Resolve size from component header when FIT Size field is 0
+        if sz == 0 and ft == 0x01:  # Microcode
+            sz = resolve_microcode_size(addr)
+        elif sz == 0 and ft == 0x02:  # Startup ACM
+            sz = resolve_acm_size(addr)
+
         entries.append({
             "Index": i,
             "Address": f"0x{addr:016X}",
-            "Size (x16)": hex(sz),
+            "Size": f"0x{sz:X}",
             "Version": f"0x{ver:04X}",
             "Type": f"0x{ft:02X} ({type_name})",
             "C_V": cv,
@@ -464,7 +548,7 @@ def parse_ibb_element(data, offset):
         fields[f"IbbSegment[{i}].Reserved"] = f"0x{seg_reserved:04X}"
         fields[f"IbbSegment[{i}].Flags"] = f"0x{seg_flags:04X} ({flag_name})"
         fields[f"IbbSegment[{i}].Base"] = f"0x{seg_base:08X}"
-        fields[f"IbbSegment[{i}].Size"] = f"0x{seg_size:08X}\n"
+        fields[f"IbbSegment[{i}].Size"] = f"0x{seg_size // 16:08X}\n"
         pos += 12
 
     return fields
@@ -550,7 +634,7 @@ def parse_txt_element(data, offset):
         fields[f"TxtSegment[{i}].Reserved"] = f"0x{seg_reserved:04X}"
         fields[f"TxtSegment[{i}].Flags"] = f"0x{seg_flags:04X} ({flag_name})"
         fields[f"TxtSegment[{i}].Base"] = f"0x{seg_base:08X}"
-        fields[f"TxtSegment[{i}].Size"] = f"0x{seg_size:08X}"
+        fields[f"TxtSegment[{i}].Size"] = f"0x{seg_size // 16:08X}"
 
         dpos += 12
 
@@ -688,25 +772,34 @@ def main():
         print("  FIT signature not found.\n")
     else:
         for off in fit_offsets:
-            print(f"\n  FIT found at offset 0x{off:08X}")
-
             entries = parse_fit_table(data, off)
-            if entries:
-                header = entries[0]
-                
-                print(f"  Number of entries: {header.get('NumEntries', '?')}")
-                print(f"  {'Idx':<5} {'Type':<30} {'Address':<20} {'Size(x16)':<12} {'Ver':<8} {'C_V':<5} {'Chk'}")
-                print(f"  {'-'*5} {'-'*30} {'-'*20} {'-'*12} {'-'*8} {'-'*5} {'-'*6}")
-                
-                for e in entries:
-                    idx = e.get("Index", "")
-                    typ = e.get("Type", "")
-                    addr = e.get("Address", "")
-                    sz = e.get("Size (x16)", e.get("NumEntries", ""))
-                    ver = e.get("Version", "")
-                    cv = e.get("C_V", "")
-                    cs = e.get("Checksum", "")
-                    print(f"  {idx:<5} {typ:<30} {addr:<20} {str(sz):<12} {ver:<8} {str(cv):<5} {cs}")
+
+            if not entries:
+                continue
+
+            header = entries[0]
+            num = header.get("NumEntries", 0)
+            ver = header.get("Version", "")
+
+            # Skip invalid FIT: must have entries and a valid version
+            if num == 0 or ver != "0x0100":
+                continue
+
+            print(f"\n  FIT found at offset 0x{off:08X}")
+            print(f"  Number of entries: {num}")
+            print(f"  {'Idx':<5} {'Type':<30} {'Address':<20} {'Size':<12} {'Ver':<8} {'C_V':<5} {'Chk'}")
+            print(f"  {'-'*5} {'-'*30} {'-'*20} {'-'*12} {'-'*8} {'-'*5} {'-'*6}")
+
+            for e in entries:
+                idx = e.get("Index", "")
+                typ = e.get("Type", "")
+                addr = e.get("Address", "")
+                sz = e.get("Size", e.get("NumEntries", ""))
+                ver = e.get("Version", "")
+                cv = e.get("C_V", "")
+                cs = e.get("Checksum", "")
+                print(f"  {idx:<5} {typ:<30} {addr:<20} {str(sz):<12} {ver:<8} {str(cv):<5} {cs}")
+
             print()
 
     # --- Search for Boot Guard structures ---
@@ -718,8 +811,15 @@ def main():
         offsets = find_all_occurrences(data, sig)
         if not offsets:
             continue
-            
+
         for off in offsets:
+            # Validate StructVersion (byte right after the 8-byte signature)
+            if off + 9 > len(data):
+                continue
+            struct_version = data[off + 8]
+            if struct_version == 0x00:
+                continue
+
             print(f"\n  [{description}] found at offset 0x{off:08X}")
             if sig in PARSERS:
                 name, parse_fn = PARSERS[sig]
@@ -727,7 +827,6 @@ def main():
                 print_fields(fields)
 
     print("\nDone.")
-
 
 if __name__ == "__main__":
     main()
